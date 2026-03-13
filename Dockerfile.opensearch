@@ -1,0 +1,20 @@
+# OpenSearch with IK Analyzer Plugin
+# IK 分词器用于中文文本分析
+
+FROM opensearchproject/opensearch:2.11.0
+
+# Switch to root to install plugin
+USER root
+
+# Install IK analyzer plugin from infinilabs (the actively maintained fork)
+# Fallback: if IK install fails, OpenSearch still works with built-in CJK/standard analyzer
+RUN /usr/share/opensearch/bin/opensearch-plugin install --batch \
+    https://get.infini.cloud/opensearch/analysis-ik/2.11.0 \
+    || echo "WARN: IK plugin install failed, falling back to built-in analyzers"
+
+# Install ICU analysis plugin (built-in alternative for CJK text)
+RUN /usr/share/opensearch/bin/opensearch-plugin install --batch analysis-icu \
+    || echo "WARN: ICU plugin install failed"
+
+# Switch back to opensearch user
+USER opensearch

@@ -1,0 +1,85 @@
+# ===========================================
+# Go
+# ===========================================
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/main
+/server
+bin/
+
+# Test binary
+*.test
+
+# Output of go coverage tool
+*.out
+coverage.out
+coverage.html
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# ===========================================
+# Frontend (Node.js / React)
+# ===========================================
+frontend/node_modules/
+frontend/dist/
+
+# ===========================================
+# Environment & Secrets
+# ===========================================
+.env
+.env.local
+.env.*.local
+
+# ===========================================
+# IDE & Editor
+# ===========================================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# ===========================================
+# OS
+# ===========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ===========================================
+# Docker
+# ===========================================
+# Do not ignore docker-compose.yml or Dockerfiles
+
+# ===========================================
+# Uploads & Runtime Data
+# ===========================================
+uploads/
+*.tmp
+*.log
+logs/
+
+# ===========================================
+# Project specific
+# ===========================================
+# Playwright test artifacts
+.playwright-cli/
+
+# CodeBuddy working memory (local only)
+.codebuddy/

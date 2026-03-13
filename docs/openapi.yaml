@@ -1,0 +1,995 @@
+openapi: 3.0.3
+info:
+  title: Knowledge Platform API
+  description: |
+    知识管理平台 API - 支持 RAG 检索增强生成的知识库管理系统
+    
+    ## 认证方式
+    - 大部分 API 需要通过 `X-Tenant-ID` Header 传递租户 ID
+    - 管理员接口 `/admin/*` 不需要租户认证
+    
+    ## 多租户隔离
+    - 所有数据按租户隔离
+    - 文档、知识库、检索结果均受租户约束
+  version: 1.0.0
+  contact:
+    name: Knowledge Platform Team
+
+servers:
+  - url: http://localhost:8080/api/v1
+    description: 本地开发服务器
+
+tags:
+  - name: Health
+    description: 健康检查
+  - name: Tenant
+    description: 租户管理（管理员接口）
+  - name: KnowledgeBase
+    description: 知识库管理
+  - name: Document
+    description: 文档管理
+  - name: RAG
+    description: RAG 检索查询
+
+paths:
+  # ===========================================
+  # Health Check
+  # ===========================================
+  /health:
+    get:
+      tags:
+        - Health
+      summary: 健康检查
+      description: 检查服务是否正常运行
+      operationId: healthCheck
+      responses:
+        '200':
+          description: 服务正常
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  version:
+                    type: string
+                    example: 1.0.0
+
+  # ===========================================
+  # Tenant Management (Admin)
+  # ===========================================
+  /admin/tenants:
+    get:
+      tags:
+        - Tenant
+      summary: 获取租户列表
+      description: 管理员接口，获取所有租户列表
+      operationId: listTenants
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+        - name: keyword
+          in: query
+          description: 搜索关键词（匹配 name/code）
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: 状态筛选
+          schema:
+            type: string
+            enum: [active, inactive]
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+
+    post:
+      tags:
+        - Tenant
+      summary: 创建租户
+      description: 管理员接口，创建新租户
+      operationId: createTenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - code
+              properties:
+                name:
+                  type: string
+                  example: 我的团队
+                code:
+                  type: string
+                  example: my-team
+                description:
+                  type: string
+                  example: 团队描述
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /admin/tenants/{id}:
+    get:
+      tags:
+        - Tenant
+      summary: 获取租户详情
+      operationId: getTenant
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Tenant
+      summary: 更新租户
+      operationId: updateTenant
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                code:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [active, inactive]
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Tenant
+      summary: 删除租户
+      operationId: deleteTenant
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================
+  # Knowledge Base Management
+  # ===========================================
+  /knowledge-bases:
+    get:
+      tags:
+        - KnowledgeBase
+      summary: 获取知识库列表
+      operationId: listKnowledgeBases
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/KnowledgeBase'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+
+    post:
+      tags:
+        - KnowledgeBase
+      summary: 创建知识库
+      operationId: createKnowledgeBase
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  example: 技术文档库
+                description:
+                  type: string
+                  example: 存储所有技术相关文档
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /knowledge-bases/{id}:
+    get:
+      tags:
+        - KnowledgeBase
+      summary: 获取知识库详情
+      operationId: getKnowledgeBase
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/KBId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - KnowledgeBase
+      summary: 更新知识库
+      operationId: updateKnowledgeBase
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/KBId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBase'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - KnowledgeBase
+      summary: 删除知识库
+      operationId: deleteKnowledgeBase
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/KBId'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /knowledge-bases/{id}/observability:
+    get:
+      tags:
+        - KnowledgeBase
+      summary: 获取知识库可观测性数据
+      description: 获取知识库的文档统计、处理事件、Token 使用量等信息
+      operationId: getKBObservability
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/KBId'
+        - name: limit
+          in: query
+          description: 返回最近事件数量限制
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KBObservability'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================
+  # Document Management
+  # ===========================================
+  /documents:
+    get:
+      tags:
+        - Document
+      summary: 获取文档列表
+      operationId: listDocuments
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: knowledge_base_id
+          in: query
+          schema:
+            type: string
+        - name: keyword
+          in: query
+          schema:
+            type: string
+        - name: doc_type
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  page_size:
+                    type: integer
+
+    post:
+      tags:
+        - Document
+      summary: 创建文档
+      description: 直接创建文档（不涉及文件上传）
+      operationId: createDocument
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - title
+              properties:
+                title:
+                  type: string
+                  example: API 设计文档
+                content:
+                  type: string
+                  description: 文档内容（Markdown 格式）
+                knowledge_base_id:
+                  type: string
+                doc_type:
+                  type: string
+                  enum: [generic, technical, product, ops]
+                  default: generic
+                format:
+                  type: string
+                  enum: [markdown, txt, pdf, docx, xlsx, csv, pptx, html]
+                  default: markdown
+                file_path:
+                  type: string
+                file_size:
+                  type: integer
+                metadata:
+                  type: object
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /documents/upload:
+    post:
+      tags:
+        - Document
+      summary: 上传文档
+      description: 上传文件并创建文档，支持自动解析
+      operationId: uploadDocument
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+                - metadata
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 上传的文件
+                metadata:
+                  type: string
+                  description: JSON 格式的元数据，必须包含 knowledge_base_id
+                  example: '{"knowledge_base_id": "kb123"}'
+      responses:
+        '201':
+          description: 上传成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '413':
+          description: 文件过大
+
+  /documents/{id}:
+    get:
+      tags:
+        - Document
+      summary: 获取文档详情
+      operationId: getDocument
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Document
+      summary: 更新文档
+      operationId: updateDocument
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                doc_type:
+                  type: string
+                status:
+                  type: string
+                summary:
+                  type: string
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Document
+      summary: 删除文档
+      operationId: deleteDocument
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: 删除成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /documents/{id}/process:
+    post:
+      tags:
+        - Document
+      summary: 触发文档处理
+      description: 异步处理文档，包括分块、向量化、知识图谱构建等
+      operationId: processDocument
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '202':
+          description: 处理已开始
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: document processing started
+                  document_id:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /documents/{id}/processing-events:
+    get:
+      tags:
+        - Document
+      summary: 获取文档处理事件
+      description: 获取文档处理过程中的所有事件记录
+      operationId: getDocumentProcessingEvents
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ProcessingEvent'
+                  total:
+                    type: integer
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /documents/{id}/observability:
+    get:
+      tags:
+        - Document
+      summary: 获取文档可观测性数据
+      operationId: getDocumentObservability
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentObservability'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================
+  # RAG Query
+  # ===========================================
+  /rag/query:
+    post:
+      tags:
+        - RAG
+      summary: RAG 检索查询
+      description: |
+        执行 RAG 检索查询，支持：
+        - 文本检索（BM25）
+        - 向量检索（语义相似度）
+        - 知识图谱检索
+        - 混合检索（RRF 融合）
+        - LLM 重排序
+      operationId: ragQuery
+      parameters:
+        - $ref: '#/components/parameters/XTenantID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - query
+              properties:
+                query:
+                  type: string
+                  description: 查询文本
+                  example: 如何配置 OpenSearch IK 分词器？
+                knowledge_base_id:
+                  oneOf:
+                    - type: string
+                    - type: integer
+                  description: 指定知识库 ID（可选）
+                top_k:
+                  type: integer
+                  default: 10
+                  description: 返回结果数量
+                filters:
+                  type: object
+                  description: 过滤条件
+                hybrid_weight:
+                  type: number
+                  format: float
+                  minimum: 0
+                  maximum: 1
+                  default: 0.5
+                  description: 混合检索中文本检索的权重
+                include_graph:
+                  type: boolean
+                  default: false
+                  description: 是否包含知识图谱检索
+            example:
+              query: 如何配置 OpenSearch？
+              knowledge_base_id: "kb123"
+              top_k: 5
+              hybrid_weight: 0.5
+              include_graph: true
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RAGResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+components:
+  parameters:
+    XTenantID:
+      name: X-Tenant-ID
+      in: header
+      required: true
+      description: 租户 ID
+      schema:
+        type: string
+
+    TenantId:
+      name: id
+      in: path
+      required: true
+      description: 租户 ID
+      schema:
+        type: string
+
+    KBId:
+      name: id
+      in: path
+      required: true
+      description: 知识库 ID
+      schema:
+        type: string
+
+    DocumentId:
+      name: id
+      in: path
+      required: true
+      description: 文档 ID
+      schema:
+        type: string
+
+  responses:
+    BadRequest:
+      description: 请求参数错误
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    KnowledgeBase:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        knowledge_base_id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        doc_type:
+          type: string
+          enum: [generic, technical, product, ops]
+        format:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, completed, failed]
+        file_path:
+          type: string
+        file_size:
+          type: integer
+        summary:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ProcessingEvent:
+      type: object
+      properties:
+        id:
+          type: string
+        document_id:
+          type: string
+        event_type:
+          type: string
+          enum: [chunking_started, chunking_completed, embedding_started, embedding_completed, indexing_started, indexing_completed, graph_started, graph_completed, failed]
+        status:
+          type: string
+          enum: [started, completed, failed]
+        message:
+          type: string
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    KBObservability:
+      type: object
+      properties:
+        knowledge_base_id:
+          type: string
+        document_count:
+          type: integer
+        chunk_count:
+          type: integer
+        total_tokens:
+          type: integer
+        recent_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProcessingEvent'
+
+    DocumentObservability:
+      type: object
+      properties:
+        document_id:
+          type: string
+        chunk_count:
+          type: integer
+        embedding_count:
+          type: integer
+        graph_entity_count:
+          type: integer
+        graph_relation_count:
+          type: integer
+        total_tokens:
+          type: integer
+        processing_events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProcessingEvent'
+
+    RAGResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        answer:
+          type: string
+          description: LLM 生成的回答
+        sources:
+          type: array
+          description: 引用的文档片段
+          items:
+            type: object
+            properties:
+              chunk_id:
+                type: string
+              document_id:
+                type: string
+              document_title:
+                type: string
+              content:
+                type: string
+              score:
+                type: number
+                format: float
+              metadata:
+                type: object
+        graph_context:
+          type: object
+          description: 知识图谱上下文
+          properties:
+            entities:
+              type: array
+              items:
+                type: object
+            relations:
+              type: array
+              items:
+                type: object
+        metadata:
+          type: object
+          properties:
+            retrieval_time_ms:
+              type: integer
+            total_chunks_searched:
+              type: integer
+            reranked:
+              type: boolean
+
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        code:
+          type: integer
