@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   Button,
@@ -56,11 +56,37 @@ const DocumentDetailPage = () => {
     return ['draft', 'processing'].includes(document.status)
   }, [document])
 
+  const fetchDocument = useCallback(async (silent = false) => {
+    if (!id) return
+    if (!silent) setLoading(true)
+    try {
+      const doc = await getDocument(id)
+      setDocument(doc)
+    } catch {
+      message.error('获取文档详情失败')
+    } finally {
+      if (!silent) setLoading(false)
+    }
+  }, [id])
+
+  const fetchEvents = useCallback(async (silent = false) => {
+    if (!id) return
+    if (!silent) setEventLoading(true)
+    try {
+      const result = await getDocumentProcessingEvents(id)
+      setEvents(result.data || [])
+    } catch {
+      // 允许静默失败，避免轮询打扰
+    } finally {
+      if (!silent) setEventLoading(false)
+    }
+  }, [id])
+
   useEffect(() => {
     if (!id) return
     void fetchDocument()
     void fetchEvents()
-  }, [id])
+  }, [id, fetchDocument, fetchEvents])
 
   useEffect(() => {
     if (!id || !isProcessing) return
@@ -69,31 +95,7 @@ const DocumentDetailPage = () => {
       void fetchEvents(true)
     }, 2500)
     return () => window.clearInterval(timer)
-  }, [id, isProcessing])
-
-  const fetchDocument = async (silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const doc = await getDocument(id!)
-      setDocument(doc)
-    } catch {
-      message.error('获取文档详情失败')
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }
-
-  const fetchEvents = async (silent = false) => {
-    if (!silent) setEventLoading(true)
-    try {
-      const result = await getDocumentProcessingEvents(id!)
-      setEvents(result.data || [])
-    } catch {
-      // 允许静默失败，避免轮询打扰
-    } finally {
-      if (!silent) setEventLoading(false)
-    }
-  }
+  }, [id, isProcessing, fetchDocument, fetchEvents])
 
   const handleProcess = async () => {
     try {

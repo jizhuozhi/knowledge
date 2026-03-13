@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Button,
   Card,
@@ -34,15 +34,7 @@ const DocumentListPage = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
 
-  useEffect(() => {
-    void fetchKnowledgeBases()
-  }, [])
-
-  useEffect(() => {
-    void fetchDocuments()
-  }, [page, pageSize, keyword, selectedKnowledgeBaseId])
-
-  const fetchKnowledgeBases = async () => {
+  const fetchKnowledgeBases = useCallback(async () => {
     try {
       const kbs = await getKnowledgeBases()
       setKnowledgeBases(kbs)
@@ -56,9 +48,10 @@ const DocumentListPage = () => {
     } catch {
       message.error('获取知识库列表失败')
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams])
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = useCallback(async () => {
     if (!selectedKnowledgeBaseId) {
       setDocuments([])
       setTotal(0)
@@ -80,7 +73,15 @@ const DocumentListPage = () => {
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedKnowledgeBaseId, keyword, page, pageSize])
+
+  useEffect(() => {
+    void fetchKnowledgeBases()
+  }, [fetchKnowledgeBases])
+
+  useEffect(() => {
+    void fetchDocuments()
+  }, [fetchDocuments])
 
   const handleUpload = async (file: File) => {
     if (!selectedKnowledgeBaseId) {

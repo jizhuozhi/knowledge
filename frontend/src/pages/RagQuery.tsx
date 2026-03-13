@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import {
   Card,
@@ -50,14 +50,7 @@ const RagQueryPage = () => {
   const [hybridWeight, setHybridWeight] = useState(0.5)
   const [includeGraph, setIncludeGraph] = useState(false)
 
-  useEffect(() => {
-    void fetchKnowledgeBases()
-  }, [])
-
-  const results = response?.results ?? []
-  const understandingKeywords = response?.understanding?.keywords ?? []
-
-  const fetchKnowledgeBases = async () => {
+  const fetchKnowledgeBases = useCallback(async () => {
     try {
       const kbs = await getKnowledgeBases()
       setKnowledgeBases(kbs)
@@ -67,7 +60,15 @@ const RagQueryPage = () => {
     } catch {
       message.error('获取知识库列表失败')
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    void fetchKnowledgeBases()
+  }, [fetchKnowledgeBases])
+
+  const results = response?.results ?? []
+  const understandingKeywords = response?.understanding?.keywords ?? []
 
   const handleSearch = async () => {
     if (!query.trim()) return

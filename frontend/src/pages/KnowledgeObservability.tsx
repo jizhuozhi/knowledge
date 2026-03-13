@@ -55,11 +55,7 @@ const KnowledgeObservabilityPage = () => {
   const [data, setData] = useState<KnowledgeBaseObservability | null>(null)
   const [searchParams] = useSearchParams()
 
-  useEffect(() => {
-    void init()
-  }, [])
-
-  const init = async () => {
+  const init = useCallback(async () => {
     try {
       const kbs = await getKnowledgeBases()
       setKbOptions(kbs)
@@ -73,7 +69,11 @@ const KnowledgeObservabilityPage = () => {
     } catch {
       message.error('获取知识库列表失败')
     }
-  }
+  }, [searchParams])
+
+  useEffect(() => {
+    void init()
+  }, [init])
 
   const loadData = async () => {
     if (!selectedKbId) {
