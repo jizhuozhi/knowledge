@@ -108,6 +108,7 @@ services:
         condition: service_healthy
     volumes:
       - ./uploads:/app/uploads
+      - ~/.aws:/root/.aws:ro
 
 volumes:
   postgres_data:

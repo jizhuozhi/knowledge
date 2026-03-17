@@ -12,7 +12,7 @@ import (
 
 // BaseModel contains common fields for all models
 type BaseModel struct {
-	ID        string         `gorm:"primaryKey;size:12" json:"id"`
+	ID        string         `gorm:"primaryKey;type:varchar(12)" json:"id"`
 	CreatedAt time.Time      `json:"created_at"`
 	UpdatedAt time.Time      `json:"updated_at"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`

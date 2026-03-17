@@ -141,38 +141,62 @@ const KnowledgeObservabilityPage = () => {
 
   const graphCols: ColumnsType<KBGraphRelationSample> = [
     {
-      title: '关系',
-      key: 'relation',
+      title: '源实体',
+      key: 'source',
+      width: 160,
       render: (_, row) => (
-        <Space size={4}>
-          <Tag>{row.source_type}</Tag>
-          <Text strong>{row.source_name}</Text>
-          <Tag color="blue">{row.relation_type}</Tag>
-          <Text strong>{row.target_name}</Text>
-          <Tag>{row.target_type}</Tag>
+        <Space direction="vertical" size={0}>
+          <Text strong style={{ fontSize: 13 }}>{row.source_name}</Text>
+          <Tag style={{ fontSize: 11 }}>{row.source_type}</Tag>
+        </Space>
+      ),
+    },
+    {
+      title: '关系',
+      dataIndex: 'relation_type',
+      width: 120,
+      align: 'center' as const,
+      render: (v: string) => (
+        <Tag color="blue" style={{ margin: 0 }}>{v}</Tag>
+      ),
+    },
+    {
+      title: '目标实体',
+      key: 'target',
+      width: 160,
+      render: (_, row) => (
+        <Space direction="vertical" size={0}>
+          <Text strong style={{ fontSize: 13 }}>{row.target_name}</Text>
+          <Tag style={{ fontSize: 11 }}>{row.target_type}</Tag>
         </Space>
       ),
     },
     {
       title: '权重',
       dataIndex: 'weight',
-      width: 80,
-      render: (w: number) => Number(w || 0).toFixed(3),
+      width: 70,
+      align: 'center' as const,
+      render: (w: number) => (
+        <Text type={w >= 0.8 ? 'success' : w >= 0.5 ? 'warning' : 'secondary'}>
+          {Number(w || 0).toFixed(2)}
+        </Text>
+      ),
     },
-    { title: '源文档', dataIndex: 'source_document_id', width: 180, ellipsis: true },
-    { title: '目标文档', dataIndex: 'target_document_id', width: 180, ellipsis: true },
   ]
 
   const entityCols: ColumnsType<KBGraphEntitySample> = [
-    { title: '实体名', dataIndex: 'name', width: 200 },
+    {
+      title: '实体名',
+      dataIndex: 'name',
+      ellipsis: true,
+      render: (v: string) => <Text strong>{v}</Text>,
+    },
     {
       title: '类型',
       dataIndex: 'type',
-      width: 120,
+      width: 110,
       render: (v: string) => <Tag color="blue">{v}</Tag>,
     },
-    { title: '文档ID', dataIndex: 'document_id', ellipsis: true },
-    { title: '实体ID', dataIndex: 'entity_id', ellipsis: true },
   ]
 
   const chunkCols: ColumnsType<KBChunkSample> = [
@@ -305,7 +329,7 @@ const KnowledgeObservabilityPage = () => {
                     title="全局知识图谱"
                   />
                   <Row gutter={16}>
-                    <Col span={12}>
+                    <Col span={8}>
                       <Card size="small" title="实体列表">
                         <Table
                           rowKey="entity_id"
@@ -314,11 +338,10 @@ const KnowledgeObservabilityPage = () => {
                           columns={entityCols}
                           dataSource={data.graph_entity_samples || []}
                           pagination={{ pageSize: 10, showSizeChanger: true }}
-                          scroll={{ x: true }}
                         />
                       </Card>
                     </Col>
-                    <Col span={12}>
+                    <Col span={16}>
                       <Card size="small" title="关系列表">
                         <Table
                           rowKey="relation_id"
@@ -327,7 +350,6 @@ const KnowledgeObservabilityPage = () => {
                           columns={graphCols}
                           dataSource={data.graph_relation_samples || []}
                           pagination={{ pageSize: 10, showSizeChanger: true }}
-                          scroll={{ x: true }}
                         />
                       </Card>
                     </Col>
