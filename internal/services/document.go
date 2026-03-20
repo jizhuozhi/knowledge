@@ -20,6 +20,7 @@ import (
 	"github.com/jizhuozhi/knowledge/internal/models"
 	"github.com/jizhuozhi/knowledge/internal/neo4j"
 	"github.com/jizhuozhi/knowledge/internal/opensearch"
+	"github.com/ledongthuc/pdf"
 	"github.com/xuri/excelize/v2"
 	"golang.org/x/net/html"
 	"golang.org/x/text/encoding/simplifiedchinese"
@@ -1950,7 +1951,52 @@ func (s *DocumentService) parsePDF(content []byte) (string, error) {
 	if len(content) == 0 {
 		return "", nil
 	}
-	return "[pdf] 当前版本未接入PDF结构化解析，已保留原始文件并等待后续解析增强。", nil
+
+	// Create a reader from bytes
+	reader := bytes.NewReader(content)
+	
+	// Open PDF
+	pdfReader, err := pdf.NewReader(reader, int64(len(content)))
+	if err != nil {
+		return "", fmt.Errorf("failed to open PDF: %w", err)
+	}
+
+	// Extract text from all pages
+	var textBuilder strings.Builder
+	numPages := pdfReader.NumPage()
+	
+	if numPages == 0 {
+		return "[pdf] Empty PDF document", nil
+	}
+
+	for pageNum := 1; pageNum <= numPages; pageNum++ {
+		page := pdfReader.Page(pageNum)
+		if page.V.IsNull() {
+			continue
+		}
+
+		// Extract text content from page
+		text, err := page.GetPlainText(nil)
+		if err != nil {
+			// Log error but continue with other pages
+			continue
+		}
+
+		if text != "" {
+			if textBuilder.Len() > 0 {
+				textBuilder.WriteString("\n\n")
+			}
+			textBuilder.WriteString(fmt.Sprintf("--- Page %d ---\n", pageNum))
+			textBuilder.WriteString(text)
+		}
+	}
+
+	result := strings.TrimSpace(textBuilder.String())
+	if result == "" {
+		return "[pdf] No extractable text content found in PDF", nil
+	}
+
+	return result, nil
 }
 
 func (s *DocumentService) parseDocx(content []byte) (string, error) {
