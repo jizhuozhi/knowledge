@@ -189,6 +189,34 @@ func (s *RAGService) Query(ctx context.Context, tenantID string, req *RAGRequest
 			strategyUsage, 0, errMsg)
 	}
 
+	// 2.5. Cross-language query translation & HyDE rewriting
+	queryVariants := []string{req.Query}
+	
+	// Language detection and translation
+	queryLang := s.detectQueryLanguage(req.Query)
+	translatedQuery, needsTranslation := s.translateQueryIfNeeded(ctx, tenantID, queryLang, req)
+	if needsTranslation && translatedQuery != "" {
+		fmt.Printf("Query translated: %q (%s) -> %q\n", req.Query, queryLang, translatedQuery)
+		req.Query = translatedQuery // Use translated query as primary
+		queryVariants = append(queryVariants, translatedQuery)
+	}
+	
+	// HyDE: Generate hypothetical answer for better retrieval
+	hydeQuery, hydeUsage, hydeErr := s.generateHyDE(ctx, tenantID, req.Query)
+	if hydeErr == nil && hydeQuery != "" && hydeQuery != req.Query {
+		fmt.Printf("HyDE generated: %q\n", truncate(hydeQuery, 100))
+		queryVariants = append(queryVariants, hydeQuery)
+	}
+	if s.usageTracker != nil && hydeUsage != nil {
+		errMsg := ""
+		if hydeErr != nil {
+			errMsg = hydeErr.Error()
+		}
+		s.usageTracker.RecordUsage(ctx, tenantID, nil, nil,
+			"rag", "generateHyDE", s.config.LLM.ChatModel, "chat",
+			hydeUsage, 0, errMsg)
+	}
+
 	// 3. Multi-channel retrieval — collect ranked lists per channel
 	channelResults := make(map[string][]internalChunkResult)
 
@@ -928,6 +956,127 @@ func (s *RAGService) generateAnswer(ctx context.Context, query string, results [
 	userPrompt := fmt.Sprintf("用户问题：%s\n\n检索到的相关文档：\n\n%s", query, contextText)
 
 	return s.embedding.ChatCompletionWithSystem(ctx, systemPrompt, userPrompt)
+}
+
+// detectQueryLanguage detects query language using simple heuristics (fast, no LLM)
+func (s *RAGService) detectQueryLanguage(query string) string {
+	if query == "" {
+		return "unknown"
+	}
+
+	var cjkCount, latinCount int
+	for _, r := range query {
+		switch {
+		case (r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified Ideographs
+			(r >= 0x3400 && r <= 0x4DBF):    // CJK Extension A
+			cjkCount++
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+			latinCount++
+		}
+	}
+
+	if cjkCount > latinCount {
+		return "zh"
+	} else if latinCount > 0 {
+		return "en"
+	}
+	return "unknown"
+}
+
+// translateQueryIfNeeded checks KB language distribution and decides if translation is needed
+// Returns (translatedQuery, needsTranslation)
+func (s *RAGService) translateQueryIfNeeded(ctx context.Context, tenantID, queryLang string, req *RAGRequest) (string, bool) {
+	// Get KB language distribution (pre-computed at index time)
+	kbIDs, err := s.resolveKBIDs(ctx, tenantID, req.KnowledgeBaseID)
+	if err != nil || len(kbIDs) == 0 {
+		return req.Query, false
+	}
+
+	var kb struct {
+		LanguageDistribution map[string]interface{} `gorm:"column:language_distribution"`
+	}
+	if err := s.db.WithContext(ctx).
+		Table("knowledge_bases").
+		Select("language_distribution").
+		Where("id = ? AND tenant_id = ?", kbIDs[0], tenantID).
+		First(&kb).Error; err != nil || kb.LanguageDistribution == nil {
+		return req.Query, false // No distribution data, skip translation
+	}
+
+	// Parse distribution
+	zhRatio := 0.0
+	enRatio := 0.0
+	if val, ok := kb.LanguageDistribution["zh"]; ok {
+		if f, ok := val.(float64); ok {
+			zhRatio = f
+		}
+	}
+	if val, ok := kb.LanguageDistribution["en"]; ok {
+		if f, ok := val.(float64); ok {
+			enRatio = f
+		}
+	}
+
+	// Decision rules (fast, no LLM!)
+	const threshold = 0.7
+	if queryLang == "zh" && enRatio >= threshold {
+		// Chinese query, English KB -> translate to English
+		translated, _, err := s.translateQuery(ctx, req.Query, "en")
+		if err == nil {
+			return translated, true
+		}
+	} else if queryLang == "en" && zhRatio >= threshold {
+		// English query, Chinese KB -> translate to Chinese
+		translated, _, err := s.translateQuery(ctx, req.Query, "zh")
+		if err == nil {
+			return translated, true
+		}
+	}
+
+	return req.Query, false
+}
+
+// translateQuery translates query to target language using LLM
+func (s *RAGService) translateQuery(ctx context.Context, query, targetLang string) (string, *LLMUsage, error) {
+	langName := "English"
+	if targetLang == "zh" {
+		langName = "Chinese"
+	}
+
+	prompt := fmt.Sprintf(`Translate the following query to %s. Return ONLY the translated query, no explanations.
+
+Query: %s
+
+Translation:`, langName, query)
+
+	response, usage, err := s.embedding.ChatCompletion(ctx, prompt)
+	if err != nil {
+		return query, usage, err
+	}
+
+	translated := strings.TrimSpace(response)
+	if translated == "" {
+		return query, usage, fmt.Errorf("empty translation")
+	}
+
+	return translated, usage, nil
+}
+
+// generateHyDE generates a hypothetical answer to improve retrieval (HyDE technique)
+func (s *RAGService) generateHyDE(ctx context.Context, tenantID, query string) (string, *LLMUsage, error) {
+	prompt := fmt.Sprintf(`Generate a brief, direct answer (2-3 sentences) to this question as if you were retrieving from a knowledge base. This will be used for semantic search.
+
+Question: %s
+
+Hypothetical Answer:`, query)
+
+	response, usage, err := s.embedding.ChatCompletion(ctx, prompt)
+	if err != nil {
+		return "", usage, err
+	}
+
+	hypothetical := strings.TrimSpace(response)
+	return hypothetical, usage, nil
 }
 
 // logSearchQuery logs the search query for analytics (log only, no DB persistence)

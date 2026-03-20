@@ -375,6 +375,13 @@ func (s *DocumentService) ProcessDocument(ctx context.Context, docID string) (er
 		return fmt.Errorf("failed to update document: %w", err)
 	}
 
+	// Update KB language distribution
+	if updateErr := s.updateKBLanguageDistribution(ctx, doc.KnowledgeBaseID); updateErr != nil {
+		logStep("kb_stats", "warning", "知识库语言统计更新失败", models.JSONB{"error": updateErr.Error()})
+	} else {
+		logStep("kb_stats", "success", "知识库语言统计已更新", nil)
+	}
+
 	logStep("finish", "success", "索引构建完成", models.JSONB{"status": "published"})
 	return nil
 }
@@ -2388,4 +2395,102 @@ func (s *DocumentService) parseCSV(content []byte) (string, error) {
 	}
 
 	return strings.TrimSpace(result.String()), nil
+}
+
+// detectDocumentLanguage detects the primary language of document content
+// Returns language code ("en", "zh", "ja", "mixed") and confidence (0.0-1.0)
+func (s *DocumentService) detectDocumentLanguage(content string) (string, float64) {
+	if len(content) == 0 {
+		return "unknown", 0.0
+	}
+
+	// Sample first 2000 chars for detection
+	sample := content
+	if len(content) > 2000 {
+		sample = content[:2000]
+	}
+
+	// Count character types
+	var cjkCount, latinCount, otherCount int
+	for _, r := range sample {
+		switch {
+		case (r >= 0x4E00 && r <= 0x9FFF) || // CJK Unified Ideographs
+			(r >= 0x3400 && r <= 0x4DBF) || // CJK Extension A
+			(r >= 0x20000 && r <= 0x2A6DF): // CJK Extension B
+			cjkCount++
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z'):
+			latinCount++
+		case r >= 0x3040 && r <= 0x309F: // Hiragana
+			cjkCount++ // Count as CJK for simplicity
+		case r >= 0x30A0 && r <= 0x30FF: // Katakana
+			cjkCount++
+		case r > 127:
+			otherCount++
+		}
+	}
+
+	total := cjkCount + latinCount + otherCount
+	if total == 0 {
+		return "unknown", 0.0
+	}
+
+	cjkRatio := float64(cjkCount) / float64(total)
+	latinRatio := float64(latinCount) / float64(total)
+
+	// Decision logic
+	switch {
+	case cjkRatio > 0.3 && latinRatio > 0.3:
+		// Mixed language document
+		return "mixed", 0.6
+	case cjkRatio > 0.5:
+		// Primarily CJK (Chinese/Japanese)
+		// Simple heuristic: if we see Hiragana/Katakana, it's Japanese
+		if strings.ContainsAny(sample, "あいうえおかきくけこ") || strings.ContainsAny(sample, "アイウエオカキクケコ") {
+			return "ja", cjkRatio
+		}
+		return "zh", cjkRatio
+	case latinRatio > 0.5:
+		return "en", latinRatio
+	default:
+		return "unknown", 0.5
+	}
+}
+
+// updateKBLanguageDistribution updates knowledge base language distribution stats
+func (s *DocumentService) updateKBLanguageDistribution(ctx context.Context, kbID string) error {
+	// Count documents by language
+	var langCounts []struct {
+		Language string
+		Count    int64
+	}
+	
+	if err := s.db.WithContext(ctx).
+		Model(&models.Document{}).
+		Select("language, COUNT(*) as count").
+		Where("knowledge_base_id = ? AND deleted_at IS NULL", kbID).
+		Group("language").
+		Scan(&langCounts).Error; err != nil {
+		return err
+	}
+
+	// Calculate distribution
+	var total int64
+	for _, lc := range langCounts {
+		total += lc.Count
+	}
+
+	distribution := models.JSONB{}
+	if total > 0 {
+		for _, lc := range langCounts {
+			if lc.Language != "" {
+				distribution[lc.Language] = float64(lc.Count) / float64(total)
+			}
+		}
+	}
+
+	// Update KB
+	return s.db.WithContext(ctx).
+		Model(&models.KnowledgeBase{}).
+		Where("id = ?", kbID).
+		Update("language_distribution", distribution).Error
 }

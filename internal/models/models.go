@@ -49,6 +49,10 @@ type KnowledgeBase struct {
 	Description string `gorm:"type:text" json:"description"`
 	Settings    JSONB  `gorm:"type:jsonb" json:"settings"`
 	Status      string `gorm:"size:20;default:'active'" json:"status"`
+	
+	// Language distribution (updated on document creation/deletion)
+	// Format: {"zh": 0.7, "en": 0.3, "mixed": 0.0}
+	LanguageDistribution JSONB `gorm:"type:jsonb" json:"language_distribution"`
 }
 
 // Document represents a document in a knowledge base
@@ -63,6 +67,11 @@ type Document struct {
 	FilePath         string     `gorm:"size:500" json:"file_path"`
 	FileSize         int64      `json:"file_size"`
 	Status           string     `gorm:"size:20;default:'draft'" json:"status"` // draft, published, archived
+	
+	// Language detection (detected at index time)
+	Language     string  `gorm:"size:10;index" json:"language"`      // "en", "zh", "ja", "mixed", etc.
+	LanguageConf float64 `gorm:"default:0" json:"language_conf"`     // 0.0-1.0 confidence
+	
 	Metadata         JSONB      `gorm:"type:jsonb" json:"metadata"`
 	SemanticMetadata JSONB      `gorm:"type:jsonb" json:"semantic_metadata"`
 	
