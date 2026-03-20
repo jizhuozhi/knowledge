@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jizhuozhi/knowledge/internal/config"
 	"github.com/jizhuozhi/knowledge/internal/models"
@@ -21,6 +22,7 @@ import (
 	"github.com/jizhuozhi/knowledge/internal/opensearch"
 	"github.com/xuri/excelize/v2"
 	"golang.org/x/net/html"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"gorm.io/gorm"
 )
 
@@ -1533,7 +1535,8 @@ type DocumentFilter struct {
 func (s *DocumentService) ParseDocument(content []byte, format string) (string, error) {
 	switch strings.ToLower(format) {
 	case "txt", "md", "markdown":
-		return string(content), nil
+		// ✅ 对文本文件进行编码检测和转换
+		return s.ensureUTF8Text(content), nil
 	case "html":
 		return s.parseHTML(content)
 	case "pdf":
@@ -1543,7 +1546,8 @@ func (s *DocumentService) ParseDocument(content []byte, format string) (string, 
 	case "xlsx", "csv":
 		return s.parseXlsx(content, format)
 	default:
-		return string(content), nil
+		// ✅ 未知格式也尝试作为文本处理
+		return s.ensureUTF8Text(content), nil
 	}
 }
 
@@ -1915,6 +1919,31 @@ func (s *DocumentService) htmlExtractLangFromClass(class string) string {
 		}
 	}
 	return ""
+}
+
+// ensureUTF8Text detects encoding and converts to UTF-8 if needed
+func (s *DocumentService) ensureUTF8Text(data []byte) string {
+	// First check if it's already valid UTF-8
+	if utf8.Valid(data) {
+		return string(data)
+	}
+
+	// Try common Chinese encodings: GBK (GB2312 is subset of GBK)
+	decoder := simplifiedchinese.GBK.NewDecoder()
+	utf8Bytes, err := decoder.Bytes(data)
+	if err == nil && utf8.ValidString(string(utf8Bytes)) {
+		return string(utf8Bytes)
+	}
+
+	// Try GB18030 (superset of GBK)
+	decoder = simplifiedchinese.GB18030.NewDecoder()
+	utf8Bytes, err = decoder.Bytes(data)
+	if err == nil && utf8.ValidString(string(utf8Bytes)) {
+		return string(utf8Bytes)
+	}
+
+	// Fallback: replace invalid UTF-8 sequences with U+FFFD (replacement character)
+	return strings.ToValidUTF8(string(data), "�")
 }
 
 func (s *DocumentService) parsePDF(content []byte) (string, error) {

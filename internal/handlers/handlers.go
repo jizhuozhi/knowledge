@@ -15,12 +15,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jizhuozhi/knowledge/internal/config"
 	"github.com/jizhuozhi/knowledge/internal/database"
 	"github.com/jizhuozhi/knowledge/internal/middleware"
 	"github.com/jizhuozhi/knowledge/internal/models"
 	"github.com/jizhuozhi/knowledge/internal/services"
+	"golang.org/x/text/encoding/simplifiedchinese"
 	"gorm.io/gorm"
 )
 
@@ -757,8 +759,15 @@ func (h *Handler) UploadDocument(w http.ResponseWriter, r *http.Request) {
 	format := detectFormatFromFilename(header.Filename)
 	content, parseErr := h.docService.ParseDocument(fileBytes, format)
 	if parseErr != nil {
-		content = string(fileBytes)
+		// Fallback: try to detect encoding and convert to UTF-8
+		content = convertToUTF8(fileBytes)
 		metadata["parse_warning"] = parseErr.Error()
+		
+		// If conversion still fails (e.g., binary file), use placeholder
+		if !utf8.ValidString(content) {
+			content = fmt.Sprintf("[%s] 文件解析失败,已保留原始文件: %s", format, parseErr.Error())
+			metadata["parse_error"] = "binary_or_invalid_encoding"
+		}
 	}
 
 	parsedName := fmt.Sprintf("%d.md", time.Now().UnixNano())
@@ -952,4 +961,29 @@ func detectFormatFromFilename(filename string) string {
 	default:
 		return "txt"
 	}
+}
+
+// convertToUTF8 tries to detect and convert non-UTF8 content to UTF-8
+func convertToUTF8(data []byte) string {
+	// First check if it's already valid UTF-8
+	if utf8.Valid(data) {
+		return string(data)
+	}
+
+	// Try common Chinese encodings: GBK (GB2312 is subset of GBK)
+	decoder := simplifiedchinese.GBK.NewDecoder()
+	utf8Bytes, err := decoder.Bytes(data)
+	if err == nil && utf8.ValidString(string(utf8Bytes)) {
+		return string(utf8Bytes)
+	}
+
+	// Try GB18030 (superset of GBK)
+	decoder = simplifiedchinese.GB18030.NewDecoder()
+	utf8Bytes, err = decoder.Bytes(data)
+	if err == nil && utf8.ValidString(string(utf8Bytes)) {
+		return string(utf8Bytes)
+	}
+
+	// Fallback: replace invalid UTF-8 sequences with U+FFFD (replacement character)
+	return strings.ToValidUTF8(string(data), "�")
 }
