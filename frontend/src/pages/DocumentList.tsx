@@ -217,9 +217,9 @@ const DocumentListPage = () => {
           <Upload
             beforeUpload={handleUpload}
             showUploadList={false}
-            accept=".md,.markdown,.txt,.html,.htm,.docx,.doc,.xlsx,.xls,.csv"
+            accept=".md,.markdown,.txt,.html,.htm,.docx,.doc,.xlsx,.xls,.csv,.pdf"
           >
-            <Tooltip title="支持 Markdown、TXT、HTML、DOCX、XLSX、CSV">
+            <Tooltip title="支持 Markdown、TXT、HTML、DOCX、XLSX、CSV、PDF">
               <Button icon={<UploadOutlined />} disabled={!selectedKnowledgeBaseId}>
                 上传文档
               </Button>
