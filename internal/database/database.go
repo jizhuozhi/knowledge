@@ -46,6 +46,7 @@ func AutoMigrate() error {
 		&models.Tenant{},
 		&models.KnowledgeBase{},
 		&models.Document{},
+		&models.DocumentTOCIndex{},
 		&models.Chunk{},
 		&models.GraphEntity{},
 		&models.GraphRelation{},

@@ -52,17 +52,20 @@ func main() {
 
 	docService := services.NewDocumentService(database.GetDB(), cfg)
 	ragService := services.NewRAGService(database.GetDB(), cfg)
+	ragServiceV2 := services.NewRAGServiceV2(database.GetDB(), cfg)
 
 	if osClient != nil {
 		ragService.SetOpenSearchClient(osClient)
+		ragServiceV2.SetOpenSearchClient(osClient)
 		docService.SetOpenSearchClient(osClient)
 	}
 	if neo4jClient != nil {
 		ragService.SetNeo4jClient(neo4jClient)
+		ragServiceV2.SetNeo4jClient(neo4jClient)
 		docService.SetNeo4jClient(neo4jClient)
 	}
 
-	handler := handlers.NewHandler(cfg, docService, ragService)
+	handler := handlers.NewHandler(cfg, docService, ragService, ragServiceV2)
 	r := router.SetupRouter(cfg, handler)
 
 	srv := &http.Server{

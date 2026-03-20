@@ -40,10 +40,10 @@ A multi-tenant knowledge management platform with RAG (Retrieval-Augmented Gener
 │  └──────────┘ └──────────┘ └──────────────┘    │
 └──────┬──────────────┬───────────────┬───────────┘
        │              │               │
-┌──────▼──┐    ┌──────▼──┐    ┌──────▼──┐  ┌───────┐
-│PostgreSQL│    │OpenSearch│    │  Neo4j  │  │ Redis │
-│  (RDBMS) │    │ (Search) │    │ (Graph) │  │(Cache)│
-└─────────┘    └─────────┘    └─────────┘  └───────┘
+┌──────▼──┐    ┌──────▼──┐    ┌──────▼──┐
+│PostgreSQL│    │OpenSearch│    │  Neo4j  │
+│  (RDBMS) │    │ (Search) │    │ (Graph) │
+└─────────┘    └─────────┘    └─────────┘
 ```
 
 ## 🛠 Tech Stack
@@ -56,7 +56,6 @@ A multi-tenant knowledge management platform with RAG (Retrieval-Augmented Gener
 | **Database** | PostgreSQL 15 |
 | **Search Engine** | OpenSearch 2.11 (with IK Chinese Analyzer) |
 | **Graph Database** | Neo4j 5.17 |
-| **Cache** | Redis 7 |
 | **LLM Provider** | AWS Bedrock (Titan Embedding + Nova Chat) |
 | **Containerization** | Docker + Docker Compose |
 
@@ -99,7 +98,7 @@ make init-all
 make install-deps
 
 # Start infrastructure services only
-docker compose up -d postgres opensearch neo4j redis
+docker compose up -d postgres opensearch neo4j
 
 # Initialize indices
 make init-all

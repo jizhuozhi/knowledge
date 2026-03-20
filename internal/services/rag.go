@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -458,14 +459,14 @@ func (s *RAGService) rrfMergeAndAggregate(ctx context.Context, channelResults ma
 	chunkMap := make(map[string]*chunkEntry)
 
 	chunkKey := func(r *internalChunkResult) string {
+		// Always use ChunkID if available (it's unique per chunk)
 		if r.ChunkID != "" {
 			return r.ChunkID
 		}
-		contentKey := r.Content
-		if len(contentKey) > 64 {
-			contentKey = contentKey[:64]
-		}
-		return r.DocumentID + "|" + contentKey
+		// Fallback: use hash of full content to avoid false duplicates
+		// (using first 64 chars can cause different chunks to collide)
+		h := sha256.Sum256([]byte(r.DocumentID + "|" + r.Content))
+		return fmt.Sprintf("%x", h[:16]) // 32-char hex string
 	}
 
 	for channel, results := range channelResults {
@@ -523,6 +524,39 @@ func (s *RAGService) rrfMergeAndAggregate(ctx context.Context, channelResults ma
 		for _, src := range entry.sources {
 			group.allSources[src] = true
 		}
+	}
+
+	// --- Step 2.5: Deduplicate chunks within each document by content similarity ---
+	for _, group := range docMap {
+		if len(group.chunks) <= 1 {
+			continue
+		}
+		
+		// Build content signature map (first 200 chars)
+		type chunkSig struct {
+			sig   string
+			entry chunkEntry
+		}
+		var sigs []chunkSig
+		for _, c := range group.chunks {
+			content := c.chunk.Content
+			if len(content) > 200 {
+				content = content[:200]
+			}
+			sigs = append(sigs, chunkSig{sig: content, entry: c})
+		}
+		
+		// Keep unique chunks (first occurrence wins)
+		seen := make(map[string]bool)
+		var uniqueChunks []chunkEntry
+		for _, s := range sigs {
+			if !seen[s.sig] {
+				seen[s.sig] = true
+				uniqueChunks = append(uniqueChunks, s.entry)
+			}
+		}
+		
+		group.chunks = uniqueChunks
 	}
 
 	// --- Step 3: Sort documents by total RRF score ---

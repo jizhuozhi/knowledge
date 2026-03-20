@@ -10,8 +10,9 @@ import (
 type ctxKey string
 
 const (
-	TenantIDKey ctxKey = "tenant_id"
-	UserIDKey   ctxKey = "user_id"
+	TenantIDKey        ctxKey = "tenant_id"
+	UserIDKey          ctxKey = "user_id"
+	KnowledgeBaseIDKey ctxKey = "knowledge_base_id"
 )
 
 type Middleware func(http.Handler) http.Handler
@@ -28,7 +29,7 @@ func CORS() Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Tenant-ID, X-User-ID")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With, X-Tenant-ID, X-User-ID, X-Knowledge-Base-ID")
 			w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
 
 			if r.Method == http.MethodOptions {
@@ -86,6 +87,12 @@ func Tenant() Middleware {
 				ctx = context.WithValue(ctx, UserIDKey, userIDStr)
 			}
 
+			// Extract knowledge_base_id from header (optional)
+			kbIDStr := r.Header.Get("X-Knowledge-Base-ID")
+			if kbIDStr != "" {
+				ctx = context.WithValue(ctx, KnowledgeBaseIDKey, kbIDStr)
+			}
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -103,6 +110,13 @@ func GetUserID(ctx context.Context) string {
 		return userID
 	}
 	return ""
+}
+
+func GetKnowledgeBaseID(ctx context.Context) *string {
+	if kbID, ok := ctx.Value(KnowledgeBaseIDKey).(string); ok && kbID != "" {
+		return &kbID
+	}
+	return nil
 }
 
 func JSONResponse(w http.ResponseWriter, status int, data interface{}) {

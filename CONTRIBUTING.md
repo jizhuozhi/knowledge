@@ -25,7 +25,7 @@ cp .env.example .env
 # Edit .env with your settings
 
 # Start infrastructure
-docker compose up -d postgres opensearch neo4j redis
+docker compose up -d postgres opensearch neo4j
 
 # Initialize indices
 make init-all

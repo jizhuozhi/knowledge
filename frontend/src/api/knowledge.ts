@@ -76,7 +76,15 @@ export const getDocumentObservability = async (id: string) => {
 
 // RAG APIs
 export const ragQuery = async (request: RagRequest) => {
-  const response = await api.post<RagResponse>('/rag/query', request)
+  const { knowledge_base_id, ...bodyParams } = request
+  const headers: Record<string, string> = {}
+  
+  // Move knowledge_base_id to header
+  if (knowledge_base_id) {
+    headers['X-Knowledge-Base-ID'] = knowledge_base_id
+  }
+  
+  const response = await api.post<RagResponse>('/rag/query', bodyParams, { headers })
   return response.data
 }
 

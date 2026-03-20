@@ -67,19 +67,6 @@ services:
       timeout: 10s
       retries: 5
 
-  redis:
-    image: redis:7-alpine
-    container_name: knowledge-redis
-    ports:
-      - "${REDIS_PORT:-6379}:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   backend:
     build:
       context: .
@@ -91,7 +78,6 @@ services:
       - DB_HOST=postgres
       - OPENSEARCH_HOST=opensearch
       - NEO4J_URI=bolt://neo4j:7687
-      - REDIS_HOST=redis
       - UPLOAD_DIR=/app/uploads
       - STATIC_DIR=/app/static
     ports:
@@ -104,8 +90,6 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     volumes:
       - ./uploads:/app/uploads
       - ~/.aws:/root/.aws:ro
@@ -115,4 +99,3 @@ volumes:
   opensearch_data:
   neo4j_data:
   neo4j_logs:
-  redis_data:

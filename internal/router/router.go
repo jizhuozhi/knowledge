@@ -42,6 +42,8 @@ func SetupRouter(cfg *config.Config, handler *handlers.Handler) http.Handler {
 	mux.HandleFunc("GET /api/v1/documents/{id}/observability", handler.GetDocumentObservability)
 
 	mux.HandleFunc("POST /api/v1/rag/query", handler.RAGQuery)
+	mux.HandleFunc("POST /api/v1/query/analyze", handler.AnalyzeQueryIntent)
+	mux.HandleFunc("GET /api/v1/documents/{id}/toc", handler.GetDocumentTOC)
 
 	staticDir := cfg.App.StaticDir
 	if staticDir == "" {

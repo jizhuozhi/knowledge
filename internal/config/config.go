@@ -12,7 +12,6 @@ type Config struct {
 	Database  DatabaseConfig
 	OpenSearch OpenSearchConfig
 	Neo4j     Neo4jConfig
-	Redis     RedisConfig
 	LLM       LLMConfig
 	Tenant    TenantConfig
 	Document  DocumentConfig
@@ -64,17 +63,6 @@ type Neo4jConfig struct {
 	URI      string
 	User     string
 	Password string
-}
-
-type RedisConfig struct {
-	Host     string
-	Port     int
-	Password string
-	DB       int
-}
-
-func (c RedisConfig) Address() string {
-	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }
 
 // LLMConfig configures AWS Bedrock as the sole LLM provider
@@ -180,12 +168,6 @@ func Load() error {
 			URI:      viper.GetString("NEO4J_URI"),
 			User:     viper.GetString("NEO4J_USER"),
 			Password: viper.GetString("NEO4J_PASSWORD"),
-		},
-		Redis: RedisConfig{
-			Host:     viper.GetString("REDIS_HOST"),
-			Port:     viper.GetInt("REDIS_PORT"),
-			Password: viper.GetString("REDIS_PASSWORD"),
-			DB:       viper.GetInt("REDIS_DB"),
 		},
 		LLM: LLMConfig{
 			Provider:           "bedrock",

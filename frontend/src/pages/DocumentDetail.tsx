@@ -543,6 +543,7 @@ const DocumentDetailPage = () => {
                               percent={hasFailed ? progressPercent : progressPercent}
                               size={56}
                               status={hasFailed ? 'exception' : isProcessing ? 'active' : 'success'}
+                              strokeLinecap="butt"
                             />
                           </Col>
                           <Col span={20}>

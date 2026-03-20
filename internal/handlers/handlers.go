@@ -25,16 +25,18 @@ import (
 )
 
 type Handler struct {
-	config     *config.Config
-	docService *services.DocumentService
-	ragService *services.RAGService
+	config       *config.Config
+	docService   *services.DocumentService
+	ragService   *services.RAGService
+	ragServiceV2 *services.RAGServiceV2
 }
 
-func NewHandler(cfg *config.Config, docService *services.DocumentService, ragService *services.RAGService) *Handler {
+func NewHandler(cfg *config.Config, docService *services.DocumentService, ragService *services.RAGService, ragServiceV2 *services.RAGServiceV2) *Handler {
 	return &Handler{
-		config:     cfg,
-		docService: docService,
-		ragService: ragService,
+		config:       cfg,
+		docService:   docService,
+		ragService:   ragService,
+		ragServiceV2: ragServiceV2,
 	}
 }
 
@@ -820,13 +822,44 @@ func (h *Handler) GetDocumentProcessingEvents(w http.ResponseWriter, r *http.Req
 func (h *Handler) RAGQuery(w http.ResponseWriter, r *http.Request) {
 	tenantID := middleware.GetTenantID(r.Context())
 
+	var req services.RAGRequestV2
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Query == "" {
+		middleware.JSONError(w, http.StatusBadRequest, "query is required")
+		return
+	}
+
+	// Priority: Header > Body (for backward compatibility)
+	kbID := middleware.GetKnowledgeBaseID(r.Context())
+	if kbID == nil && req.KnowledgeBaseID != nil {
+		kbID = req.KnowledgeBaseID
+	}
+	req.KnowledgeBaseID = kbID
+
+	// Use RAGServiceV2 for enhanced query processing with hybrid intent support
+	response, err := h.ragServiceV2.Query(r.Context(), tenantID, &req)
+	if err != nil {
+		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	middleware.JSONResponse(w, http.StatusOK, response)
+}
+
+// ===========================================
+// Query Analysis & Document TOC
+// ===========================================
+
+// AnalyzeQueryIntent analyzes user query intent (standalone endpoint for debugging)
+func (h *Handler) AnalyzeQueryIntent(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.GetTenantID(r.Context())
+
 	var req struct {
-		Query           string                 `json:"query"`
-		KnowledgeBaseID json.RawMessage        `json:"knowledge_base_id,omitempty"`
-		TopK            int                    `json:"top_k,omitempty"`
-		Filters         map[string]interface{} `json:"filters,omitempty"`
-		HybridWeight    float64                `json:"hybrid_weight,omitempty"`
-		IncludeGraph    bool                   `json:"include_graph,omitempty"`
+		Query string `json:"query"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -839,35 +872,62 @@ func (h *Handler) RAGQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse knowledge_base_id: accept both number and string
-	var kbID *string
-	if len(req.KnowledgeBaseID) > 0 && string(req.KnowledgeBaseID) != "null" {
-		raw := strings.TrimSpace(string(req.KnowledgeBaseID))
-		// Strip quotes if it's a JSON string like "abc123"
-		if len(raw) >= 2 && raw[0] == '"' && raw[len(raw)-1] == '"' {
-			raw = raw[1 : len(raw)-1]
-		}
-		if raw != "" {
-			kbID = &raw
-		}
+	// Parse tenantID to int64
+	tenantIDInt, err := strconv.ParseInt(tenantID, 10, 64)
+	if err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid tenant_id")
+		return
 	}
 
-	ragReq := &services.RAGRequest{
-		Query:           req.Query,
-		KnowledgeBaseID: kbID,
-		TopK:            req.TopK,
-		Filters:         req.Filters,
-		HybridWeight:    req.HybridWeight,
-		IncludeGraph:    req.IncludeGraph,
-	}
+	// Create QueryAnalyzerService
+	analyzerService := services.NewQueryAnalyzerService(database.DB, h.config)
 
-	response, err := h.ragService.Query(r.Context(), tenantID, ragReq)
+	result, err := analyzerService.AnalyzeIntent(r.Context(), req.Query, tenantIDInt)
 	if err != nil {
 		middleware.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	middleware.JSONResponse(w, http.StatusOK, response)
+	middleware.JSONResponse(w, http.StatusOK, result)
+}
+
+// GetDocumentTOC returns the table of contents for a document
+func (h *Handler) GetDocumentTOC(w http.ResponseWriter, r *http.Request) {
+	tenantID := middleware.GetTenantID(r.Context())
+
+	docID, err := parseIDParam(r, "id")
+	if err != nil {
+		middleware.JSONError(w, http.StatusBadRequest, "invalid document id")
+		return
+	}
+
+	// Get document with TOC
+	var doc models.Document
+	if err := database.DB.Where("id = ? AND tenant_id = ?", docID, tenantID).First(&doc).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			middleware.JSONError(w, http.StatusNotFound, "document not found")
+			return
+		}
+		middleware.JSONError(w, http.StatusInternalServerError, "failed to query document: "+err.Error())
+		return
+	}
+
+	// Extract TOC structure
+	var tocNodes []models.TOCNode
+	if doc.TOCStructure != nil {
+		if nodesData, ok := doc.TOCStructure["nodes"]; ok {
+			tocJSON, err := json.Marshal(nodesData)
+			if err == nil {
+				json.Unmarshal(tocJSON, &tocNodes)
+			}
+		}
+	}
+
+	middleware.JSONResponse(w, http.StatusOK, map[string]interface{}{
+		"document_id":   doc.ID,
+		"title":         doc.Title,
+		"toc_structure": tocNodes,
+	})
 }
 
 func detectFormatFromFilename(filename string) string {
